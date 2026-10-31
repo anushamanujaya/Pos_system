@@ -1,0 +1,55 @@
+# Local infrastructure. MongoDB runs as a single-node replica set because the POS uses multi-document transactions.
+#
+#   docker compose up -d mongo          -> database only (then `npm run dev` on the host)
+#   docker compose up -d --build        -> database + API + web (http://localhost:8080)
+#
+# Required for api: JWT_ACCESS_SECRET (export it or put it in a .env file next to this file).
+services:
+  mongo:
+    image: mongo:7
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # initiates the replica set on first start; idempotent afterwards
+      test: >
+        mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 5s
+
+  api:
+    build:
+      context: ./backend
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGODB_URI: mongodb://mongo:27017/supermarket_pos?replicaSet=rs0
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET to a long random string}
+      CORS_ORIGINS: http://localhost:8080
+      # plain-HTTP local demo only. Behind HTTPS leave this unset so the refresh cookie is Secure.
+      COOKIE_SECURE: 'false'
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - uploads:/app/server/uploads
+    expose:
+      - '4000'
+
+  web:
+    build:
+      context: ./frontend
+    depends_on:
+      - api
+    ports:
+      - '8080:80'
+
+volumes:
+  mongo-data:
+  uploads:

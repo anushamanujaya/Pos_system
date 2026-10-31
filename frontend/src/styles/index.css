@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 220 20% 14%;
+    --surface: 220 14% 96%;
+    --muted-foreground: 220 9% 40%;
+    --border: 220 13% 90%;
+    --primary: 175 80% 26%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 175 55% 94%;
+    --success: 152 60% 32%;
+    --success-soft: 150 50% 94%;
+    --warning: 35 92% 38%;
+    --warning-soft: 42 95% 93%;
+    --danger: 0 72% 46%;
+    --danger-soft: 0 85% 96%;
+  }
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+  input[type='number']::-webkit-inner-spin-button {
+    display: none;
+  }
+}
+
+@layer components {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .scroll-thin {
+    scrollbar-width: thin;
+  }
+}
+
+/* ---------- Print: receipts and reports ---------- */
+.receipt-sheet {
+  font-family: 'Courier New', ui-monospace, monospace;
+  color: #000;
+  background: #fff;
+}
+.receipt-58 {
+  width: 58mm;
+}
+.receipt-80 {
+  width: 80mm;
+}
+.receipt-A4 {
+  width: 210mm;
+  min-height: 297mm;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block;
+  }
+  @page {
+    margin: 4mm;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible !important;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .receipt-58 {
+    width: 58mm !important;
+  }
+  .receipt-80 {
+    width: 80mm !important;
+  }
+  .receipt-A4 {
+    width: 100% !important;
+  }
+  .report-print table {
+    font-size: 11px;
+  }
+}
