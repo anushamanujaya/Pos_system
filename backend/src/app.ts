@@ -1,9 +1,11 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
+import type { RequestHandler } from 'express';
 import helmet from 'helmet';
 import mongoose from 'mongoose';
 import { env } from './config/env';
+import { connectDb } from './database/connect';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { apiLimiter } from './middleware/rateLimit';
 import { authRouter } from './modules/auth/auth.routes';
@@ -25,7 +27,11 @@ import {
 import { usersRouter } from './modules/users/users.routes';
 import { logger } from './utils/logger';
 
-export function createApp() {
+type AppOptions = {
+  beforeApi?: RequestHandler;
+};
+
+export function createApp({ beforeApi }: AppOptions = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', env.isProd ? 1 : false);
@@ -75,6 +81,8 @@ export function createApp() {
     res.status(dbUp ? 200 : 503).json({ status: dbUp ? 'ok' : 'degraded', db: dbUp ? 'up' : 'down' });
   });
 
+  if (beforeApi) app.use('/api/v1', beforeApi);
+
   const v1 = express.Router();
   v1.use(apiLimiter);
   v1.use('/auth', authRouter);
@@ -101,3 +109,25 @@ export function createApp() {
   app.use(errorHandler);
   return app;
 }
+
+let databaseConnection: Promise<void> | undefined;
+
+const ensureDatabaseConnection: RequestHandler = (_req, _res, next) => {
+  if (mongoose.connection.readyState === 1) {
+    next();
+    return;
+  }
+
+  databaseConnection ??= connectDb().catch((error: unknown) => {
+    databaseConnection = undefined;
+    throw error;
+  });
+  void databaseConnection.then(() => next(), next);
+};
+
+// Vercel detects this recognized entrypoint and requires the Express application
+// itself as the module's default export. The middleware connects once per warm
+// instance, while server.ts retains its explicit connection/startup lifecycle.
+const app = createApp({ beforeApi: ensureDatabaseConnection });
+
+export default app;
