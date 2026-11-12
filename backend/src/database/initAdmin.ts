@@ -2,7 +2,7 @@
  * Production-safe bootstrap: creates default settings, base units and the first OWNER account from
  * environment-provided credentials (ADMIN_EMAIL / ADMIN_PASSWORD). Never creates demo data.
  */
-import { env } from '../config/env';
+import { DEMO_DATABASE, env } from '../config/env';
 import { connectDb, disconnectDb } from './connect';
 import { CashRegister, Unit, User } from './models';
 import { assertStrongPassword, hashPassword } from '../modules/auth/auth.service';
@@ -51,6 +51,9 @@ export async function createOwner(email: string, password: string, name: string)
 }
 
 async function main() {
+  if (env.demoMode) throw new Error('Owner initialization is forbidden in Demo Mode');
+  if (new URL(env.MONGODB_URI).pathname === `/${DEMO_DATABASE}`)
+    throw new Error('Owner initialization is forbidden against the public demo database');
   if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) {
     console.error('Set ADMIN_EMAIL and ADMIN_PASSWORD in the environment (.env) before running init:admin.');
     process.exit(1);

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Role = 'OWNER' | 'MANAGER' | 'CASHIER';
+export type Role = 'OWNER' | 'MANAGER' | 'CASHIER' | 'DEMO';
 export interface SessionUser {
   id: string;
   name: string;

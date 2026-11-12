@@ -8,7 +8,7 @@ async function main() {
   await connectDb();
   const app = createApp();
   const server = app.listen(env.PORT, () => logger.info(`API listening on http://localhost:${env.PORT}`));
-  const stopJobs = startJobs();
+  const stopJobs = env.demoMode ? () => undefined : startJobs();
 
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down`);

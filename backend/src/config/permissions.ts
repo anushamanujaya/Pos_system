@@ -1,4 +1,5 @@
-export const ROLES = ['OWNER', 'MANAGER', 'CASHIER'] as const;
+export const ROLES = ['OWNER', 'MANAGER', 'CASHIER', 'DEMO'] as const;
+export const EMPLOYEE_ROLES = ['OWNER', 'MANAGER', 'CASHIER'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const PERMISSIONS = [
@@ -70,6 +71,11 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   OWNER: new Set<Permission>(PERMISSIONS),
   MANAGER: new Set<Permission>(manager),
   CASHIER: new Set<Permission>(cashier),
+  DEMO: new Set<Permission>([
+    'products.read', 'inventory.read', 'purchases.read', 'suppliers.read',
+    'customers.read', 'sales.create', 'sales.read', 'sales.read.all',
+    'reports.read', 'cashregister.read', 'cashregister.operate',
+  ]),
 };
 
 export const can = (role: Role, perm: Permission) => ROLE_PERMISSIONS[role].has(perm);

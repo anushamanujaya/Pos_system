@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PERMISSIONS, ROLES, ROLE_PERMISSIONS } from '../../config/permissions';
+import { EMPLOYEE_ROLES, PERMISSIONS, ROLE_PERMISSIONS } from '../../config/permissions';
 import { CashShift, Sale, User } from '../../database/models';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { body, idParam, query } from '../../middleware/validate';
@@ -42,7 +42,7 @@ usersRouter.get(
   wrap(async (_req, res) => {
     ok(
       res,
-      ROLES.map((r) => ({ role: r, permissions: [...ROLE_PERMISSIONS[r]] })),
+      EMPLOYEE_ROLES.map((r) => ({ role: r, permissions: [...ROLE_PERMISSIONS[r]] })),
       { allPermissions: PERMISSIONS },
     );
   }),
@@ -53,7 +53,7 @@ usersRouter.get(
   requirePermission('employees.read'),
   wrap(async (req, res) => {
     const q = query(
-      pageQuery.extend({ role: z.enum(ROLES).optional(), active: z.enum(['true', 'false']).optional() }),
+      pageQuery.extend({ role: z.enum(EMPLOYEE_ROLES).optional(), active: z.enum(['true', 'false']).optional() }),
       req,
     );
     const f: Record<string, unknown> = {};
@@ -110,7 +110,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email(),
   phone: z.string().trim().max(30).optional(),
-  role: z.enum(ROLES),
+  role: z.enum(EMPLOYEE_ROLES),
   password: z.string().min(8).max(200),
 });
 
@@ -135,7 +135,7 @@ usersRouter.post(
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   phone: z.string().trim().max(30).optional(),
-  role: z.enum(ROLES).optional(),
+  role: z.enum(EMPLOYEE_ROLES).optional(),
   active: z.boolean().optional(),
 });
 

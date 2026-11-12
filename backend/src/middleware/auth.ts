@@ -44,6 +44,8 @@ export const authenticate = wrap(async (req: Request, _res: Response, next: Next
   const user = await User.findById(claims.sub).select('name email role active tokenVersion').lean();
   if (!user || !user.active || user.tokenVersion !== claims.tv)
     throw unauthorized('Session is no longer valid');
+  if (user.role === 'DEMO' && !env.demoMode) throw unauthorized();
+  if (env.demoMode && user.role !== 'DEMO') throw unauthorized();
   req.user = { id: String(user._id), name: user.name, email: user.email, role: user.role, ip: req.ip };
   next();
 });

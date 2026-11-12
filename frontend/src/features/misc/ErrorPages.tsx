@@ -25,6 +25,8 @@ export const UnauthorizedPage = () => (
   <Page
     code="403"
     title="Not authorised"
-    text="Your role does not have access to this area. Ask an administrator if you need it."
+    text={useAuth.getState().user?.role === 'DEMO'
+      ? 'This action is unavailable in Demo Mode. You can explore sample data and run test sales.'
+      : 'Your role does not have access to this area. Ask an administrator if you need it.'}
   />
 );

@@ -204,7 +204,7 @@ export interface Employee extends Id {
   id: string;
   name: string;
   email: string;
-  role: 'OWNER' | 'MANAGER' | 'CASHIER';
+  role: 'OWNER' | 'MANAGER' | 'CASHIER' | 'DEMO';
   phone?: string;
   active: boolean;
   lastLoginAt?: string;

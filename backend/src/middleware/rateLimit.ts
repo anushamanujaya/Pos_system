@@ -23,3 +23,10 @@ export const apiLimiter = rateLimit({
   limit: 600,
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
 });
+
+export const demoWriteLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 1000,
+  limit: 30,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Demo write limit reached. Try again shortly.' } },
+});

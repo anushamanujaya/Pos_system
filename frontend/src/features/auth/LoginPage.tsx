@@ -54,6 +54,11 @@ export function LoginPage() {
           <div>
             <h1 className="text-xl font-semibold">Supermarket POS</h1>
             <p className="text-sm text-muted-foreground">Sign in to continue</p>
+            {import.meta.env.VITE_DEMO_MODE === 'true' && (
+              <p className="mt-2 rounded-md border border-primary/30 bg-primary-soft px-3 py-2 text-sm text-primary">
+                Public Demo Mode — sign in with the shared demo account. All transactions use sample data.
+              </p>
+            )}
           </div>
         </div>
         <form
