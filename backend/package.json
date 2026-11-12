@@ -12,8 +12,6 @@
     "test": "vitest run",
     "seed": "tsx src/database/seed.ts",
     "seed:demo": "tsx src/database/seed.ts --demo",
-    "demo:init": "tsx src/database/demo.ts",
-    "demo:reset": "tsx src/database/demo.ts --reset",
     "init:admin": "tsx src/database/initAdmin.ts",
     "dev:db": "tsx src/database/devDb.ts",
     "e2e:stack": "tsx src/database/e2eStack.ts",

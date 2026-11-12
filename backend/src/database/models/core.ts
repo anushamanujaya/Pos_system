@@ -24,13 +24,6 @@ const userSchema = new Schema(
 );
 export const User = model('User', userSchema);
 
-/** Shared admission gate for public demo requests and operator-only resets. */
-export const DemoControl = model('DemoControl', new Schema({
-  _id: String,
-  resetting: { type: Boolean, default: false },
-  activeRequests: { type: Number, default: 0 },
-}, { versionKey: false }));
-
 const refreshSessionSchema = new Schema(
   {
     user: oid('User', true),

@@ -4,7 +4,7 @@
  * (so dashboards are computed from genuine records). Refuses to run in production.
  */
 import mongoose from 'mongoose';
-import { DEMO_DATABASE, env } from '../config/env';
+import { env } from '../config/env';
 import { checkout, priceRequest } from '../modules/sales/sales.service';
 import { hashPassword } from '../modules/auth/auth.service';
 import { connectDb, disconnectDb } from './connect';
@@ -16,7 +16,6 @@ import {
   Customer,
   GoodsReceipt,
   Product,
-  PurchaseOrder,
   Supplier,
   Unit,
   User,
@@ -626,31 +625,31 @@ const PRODUCTS: Row[] = [
 const SUPPLIERS = [
   {
     name: 'Demo Wholesale Traders',
-    contactPerson: 'Sample Contact A',
+    contactPerson: 'A. Perera',
     phone: '0112000001',
     email: 'orders@demo-wholesale.example',
     address: '12 Sample Road, Colombo',
   },
   {
     name: 'Sample Dairy Distributors',
-    contactPerson: 'Sample Contact B',
+    contactPerson: 'K. Fernando',
     phone: '0112000002',
     email: 'sales@sample-dairy.example',
     address: '45 Demo Lane, Kandy',
   },
   {
     name: 'Fictional Household Supplies',
-    contactPerson: 'Sample Contact C',
+    contactPerson: 'S. Silva',
     phone: '0112000003',
     email: 'info@fictional-hh.example',
     address: '8 Test Street, Galle',
   },
 ];
 const CUSTOMERS = [
-  { name: 'Sample Customer A', phone: '0000000001' },
-  { name: 'Sample Customer B', phone: '0000000002' },
-  { name: 'Sample Customer C', phone: '0000000003' },
-  { name: 'Sample Cafe', phone: '0000000004', notes: 'Fictional business customer' },
+  { name: 'Nimal Jayasinghe', phone: '0771000001' },
+  { name: 'Kamala Wijesinghe', phone: '0771000002' },
+  { name: 'Ruwan De Silva', phone: '0771000003' },
+  { name: 'Demo Cafe (Pvt) Ltd', phone: '0771000004', notes: 'Fictional business customer' },
 ];
 
 const rand = (() => {
@@ -658,7 +657,7 @@ const rand = (() => {
   return () => (s = (s * 16807) % 2147483647) / 2147483647;
 })();
 
-export async function seedCatalogue() {
+async function seedCatalogue() {
   await ensureBase();
   const settings = await getSettings();
   if (settings.taxRates.length === 0) {
@@ -677,8 +676,7 @@ export async function seedCatalogue() {
       Supplier.findOneAndUpdate({ name: s.name }, { $setOnInsert: s }, { upsert: true, new: true }),
     ),
   );
-  const actor = (await User.findOne({ role: env.demoMode ? 'DEMO' : 'OWNER' }))!;
-  if (!actor) throw new Error('Seed actor is missing');
+  const actor = (await User.findOne({ role: 'OWNER' }))!;
   const created: {
     id: mongoose.Types.ObjectId;
     qty: number;
@@ -743,30 +741,16 @@ export async function seedCatalogue() {
   const toStock = created.filter((c) => c.qty > 0);
   if (toStock.length) {
     await withTx(async (session) => {
-      const [po] = await PurchaseOrder.create(
-        [{
-          number: `PO-${String(await nextSeq('po', session)).padStart(5, '0')}`,
-          supplier: sup[0]._id,
-          status: 'RECEIVED',
-          items: toStock.map((c) => ({ product: c.id, orderedMilli: c.qty, receivedMilli: c.qty, costCents: c.cost })),
-          totalCents: toStock.reduce((sum, c) => sum + Math.round(c.cost * c.qty / 1000), 0),
-          createdBy: actor._id,
-          orderedAt: new Date(),
-          notes: 'Synthetic opening stock purchase',
-        }],
-        { session },
-      );
       const num = `GRN-${String(await nextSeq('grn', session)).padStart(5, '0')}`;
       const [grn] = await GoodsReceipt.create(
         [
           {
             number: num,
-            purchaseOrder: po._id,
             supplier: sup[0]._id,
             items: toStock.map((c) => ({ product: c.id, qtyMilli: c.qty, costCents: c.cost })),
             receivedBy: actor._id,
             notes: 'Opening stock (demo seed)',
-            totalCents: po.totalCents,
+            totalCents: 0,
           },
         ],
         { session },
@@ -821,9 +805,8 @@ async function seedPeople() {
     );
 }
 
-export async function seedTransactions() {
-  const cashier = (await User.findOne(env.demoMode ? { role: 'DEMO' } : { email: 'cashier@demo.local' }))!;
-  if (!cashier) throw new Error('Seed cashier is missing');
+async function seedTransactions() {
+  const cashier = (await User.findOne({ email: 'cashier@demo.local' }))!;
   const user = { id: String(cashier._id), name: cashier.name, email: cashier.email, role: cashier.role };
   const reg = (await CashRegister.findOne())!;
   let shift = await CashShift.findOne({ cashier: cashier._id, status: 'OPEN' });
@@ -882,9 +865,6 @@ export async function seedTransactions() {
 }
 
 async function main() {
-  if (env.demoMode) throw new Error('Use npm run demo:init for the isolated public demo database');
-  if (new URL(env.MONGODB_URI).pathname === `/${DEMO_DATABASE}`)
-    throw new Error('Legacy development seed is forbidden against the public demo database');
   if (env.isProd) {
     console.error('Refusing to seed demo data when NODE_ENV=production.');
     process.exit(1);
@@ -903,9 +883,7 @@ async function main() {
   await disconnectDb();
 }
 
-if (require.main === module) {
-  main().catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
-}
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

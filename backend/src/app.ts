@@ -7,7 +7,6 @@ import mongoose from 'mongoose';
 import { env } from './config/env';
 import { connectDb } from './database/connect';
 import { errorHandler, notFoundHandler } from './middleware/error';
-import { demoRequestGate, demoWritePolicy } from './middleware/demo';
 import { apiLimiter } from './middleware/rateLimit';
 import { authRouter } from './modules/auth/auth.routes';
 import { brandsRouter, categoriesRouter, unitsRouter } from './modules/catalog/catalog.routes';
@@ -69,7 +68,7 @@ export function createApp({ beforeApi }: AppOptions = {}) {
     });
   }
 
-  if (!env.demoMode) app.use(
+  app.use(
     '/uploads',
     express.static(uploadDir, {
       maxAge: '7d',
@@ -86,8 +85,6 @@ export function createApp({ beforeApi }: AppOptions = {}) {
 
   const v1 = express.Router();
   v1.use(apiLimiter);
-  v1.use(demoRequestGate);
-  v1.use(demoWritePolicy);
   v1.use('/auth', authRouter);
   v1.use('/users', usersRouter);
   v1.use('/products', productsRouter);

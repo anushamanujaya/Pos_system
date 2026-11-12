@@ -12,7 +12,6 @@ import { useList } from '@/hooks/useList';
 import { errMsg, send } from '@/lib/api';
 import { dateTime, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
 import type { Notification } from '@/types';
 
 const icon = { critical: AlertOctagon, warning: AlertTriangle, info: Info } as const;
@@ -23,7 +22,6 @@ const tone = {
 } as const;
 
 export function NotificationsPage() {
-  const demo = useAuth((state) => state.user?.role === 'DEMO');
   const nav = useNavigate();
   const qc = useQueryClient();
   const list = useList<Notification>('notifications', '/notifications', { limit: 20 });
@@ -32,7 +30,7 @@ export function NotificationsPage() {
     qc.invalidateQueries({ queryKey: ['notif-unread'] });
   };
   const open = async (n: Notification) => {
-    if (!demo && !n.read) {
+    if (!n.read) {
       try {
         await send('post', `/notifications/${n._id}/read`);
         refresh();
@@ -48,7 +46,7 @@ export function NotificationsPage() {
         title="Notifications"
         description="Stock and expiry alerts generated from live inventory data."
         actions={
-          !demo && <Button
+          <Button
             variant="outline"
             onClick={async () => {
               try {

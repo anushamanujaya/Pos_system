@@ -30,10 +30,6 @@ export function ProfilePage() {
   });
   const pw = useForm<z.infer<typeof pwSchema>>({ resolver: zodResolver(pwSchema) });
 
-  if (user?.role === 'DEMO') {
-    return <div className="max-w-3xl"><PageHeader title="Demo Mode" description="Shared demo account details cannot be changed." /></div>;
-  }
-
   return (
     <div className="max-w-3xl">
       <PageHeader

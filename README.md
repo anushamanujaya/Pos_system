@@ -73,8 +73,6 @@ Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toStr
 
 ## Environment variables
 
-Public recruiter demo deployment: [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md). This uses a separate database, account and Vercel projects; the local `seed:demo` test users below are not the public demo credentials.
-
 See [.env.example](.env.example). `JWT_ACCESS_SECRET` is required. Secrets stay on the server; the client bundle contains none.
 
 | Variable | Purpose |

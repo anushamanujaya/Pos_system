@@ -20,7 +20,7 @@ export function publicUser(u: {
   _id: unknown;
   name: string;
   email: string;
-  role: 'OWNER' | 'MANAGER' | 'CASHIER' | 'DEMO';
+  role: 'OWNER' | 'MANAGER' | 'CASHIER';
   mustChangePassword?: boolean | null;
   phone?: string | null;
 }) {
@@ -59,14 +59,12 @@ export async function login(email: string, password: string, meta: { userAgent?:
     throw unauthorized('Account temporarily locked. Try again later.');
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
-    if (user.role !== 'DEMO') {
-      user.failedLogins = (user.failedLogins ?? 0) + 1;
-      if (user.failedLogins >= MAX_FAILED) {
-        user.lockedUntil = new Date(Date.now() + LOCK_MS);
-        user.failedLogins = 0;
-      }
-      await user.save();
+    user.failedLogins = (user.failedLogins ?? 0) + 1;
+    if (user.failedLogins >= MAX_FAILED) {
+      user.lockedUntil = new Date(Date.now() + LOCK_MS);
+      user.failedLogins = 0;
     }
+    await user.save();
     await audit(
       { id: String(user._id), name: user.name, ip: meta.ip },
       'auth.login_failed',
@@ -77,8 +75,6 @@ export async function login(email: string, password: string, meta: { userAgent?:
     throw fail();
   }
   if (!user.active) throw unauthorized('This account has been disabled');
-  if (env.demoMode && user.role !== 'DEMO') throw fail();
-  if (user.role === 'DEMO' && !env.demoMode) throw fail();
   user.failedLogins = 0;
   user.lockedUntil = undefined;
   user.lastLoginAt = new Date();
@@ -111,8 +107,6 @@ export async function refresh(token: string | undefined, meta: { userAgent?: str
   if (session.expiresAt < new Date()) throw unauthorized('Session expired');
   const user = await User.findById(session.user);
   if (!user || !user.active) throw unauthorized('Account is not active');
-  if (env.demoMode && user.role !== 'DEMO') throw unauthorized();
-  if (user.role === 'DEMO' && !env.demoMode) throw unauthorized();
 
   // Atomic claim: only one concurrent refresh can rotate this token.
   const claimed = await RefreshSession.findOneAndUpdate(
