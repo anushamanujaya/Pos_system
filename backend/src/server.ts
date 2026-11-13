@@ -1,11 +1,13 @@
 import { createApp } from './app';
 import { env } from './config/env';
+import { assertDemoDatabase } from './config/demo';
 import { connectDb, disconnectDb } from './database/connect';
 import { startJobs } from './jobs/scheduler';
 import { logger } from './utils/logger';
 
 async function main() {
   await connectDb();
+  if (env.demoMode) await assertDemoDatabase();
   const app = createApp();
   const server = app.listen(env.PORT, () => logger.info(`API listening on http://localhost:${env.PORT}`));
   const stopJobs = startJobs();

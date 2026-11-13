@@ -17,6 +17,16 @@ export const loginLimiter = rateLimit({
   },
 });
 
+export const demoLoginLimiter = rateLimit({
+  ...common,
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMITED', message: 'Too many demo access attempts. Try again later.' },
+  },
+});
+
 export const apiLimiter = rateLimit({
   ...common,
   windowMs: 60 * 1000,

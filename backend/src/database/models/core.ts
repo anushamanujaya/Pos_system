@@ -19,6 +19,8 @@ const userSchema = new Schema(
     tokenVersion: { type: Number, default: 0 },
     failedLogins: { type: Number, default: 0 },
     lockedUntil: Date,
+    /** Set only by the guarded demo seed; demo login also checks the fixed email/role allowlist. */
+    isDemoAccount: { type: Boolean, default: false, index: true },
   },
   opts,
 );
@@ -34,12 +36,23 @@ const refreshSessionSchema = new Schema(
     replacedBy: String,
     userAgent: String,
     ip: String,
+    /** Cryptographically carried into access tokens; never inferred from the user's email alone. */
+    isDemo: { type: Boolean, default: false },
   },
   opts,
 );
 refreshSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 });
 refreshSessionSchema.index({ user: 1, revokedAt: 1 });
 export const RefreshSession = model('RefreshSession', refreshSessionSchema);
+
+const demoEnvironmentSchema = new Schema(
+  {
+    _id: { type: String, default: 'demo-environment' },
+    identityHash: { type: String, required: true },
+  },
+  opts,
+);
+export const DemoEnvironment = model('DemoEnvironment', demoEnvironmentSchema);
 
 // ---------- Catalog ----------
 const named = (extra: Record<string, unknown> = {}) =>

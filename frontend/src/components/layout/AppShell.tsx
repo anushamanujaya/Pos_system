@@ -1,5 +1,5 @@
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   ChevronDown,
@@ -8,6 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShoppingBasket,
+  RefreshCw,
   Store,
   User as UserIcon,
   X,
@@ -16,10 +17,14 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { NAV, titleFor } from '@/app/nav';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/card';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { homeFor } from '@/components/layout/guards';
 import { get, send } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
+import { useAuth, type Role, type SessionUser } from '@/stores/auth';
 import { useUi } from '@/stores/ui';
+import { usePos } from '@/features/pos/store';
 import type { Settings } from '@/types';
 
 function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
@@ -62,10 +67,15 @@ const Brand = ({ collapsed }: { collapsed: boolean }) => (
 export function AppShell() {
   const { collapsed, toggle } = useUi();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState<Role | null>(null);
+  const [switchError, setSwitchError] = useState<string | null>(null);
   const user = useAuth((s) => s.user)!;
   const clear = useAuth((s) => s.clear);
+  const setSession = useAuth((s) => s.setSession);
   const loc = useLocation();
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   useEffect(() => setMobileOpen(false), [loc.pathname]);
 
   const settings = useQuery({
@@ -85,8 +95,35 @@ export function AppShell() {
     } catch {
       /* session may already be gone */
     }
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    usePos.getState().clear();
     clear();
     nav('/login', { replace: true });
+  };
+
+  const switchDemoRole = async (role: Role) => {
+    if (!user.isDemo || role === user.role) return;
+    setSwitchError(null);
+    setSwitchingRole(role);
+    await queryClient.cancelQueries();
+    try {
+      const r = await send<{ accessToken: string; user: SessionUser }>(
+        'post',
+        '/auth/demo',
+        { role },
+        { 'X-Requested-With': 'pos-web' },
+      );
+      queryClient.clear();
+      usePos.getState().clear();
+      setSession(r.data.accessToken, r.data.user);
+      setRoleSwitcherOpen(false);
+      nav(homeFor((permission) => r.data.user.permissions.includes(permission)), { replace: true });
+    } catch (e) {
+      setSwitchError((e as Error).message);
+    } finally {
+      setSwitchingRole(null);
+    }
   };
   const unreadCount = unread.data?.data.unread ?? 0;
   const isPos = loc.pathname.startsWith('/pos');
@@ -158,6 +195,19 @@ export function AppShell() {
           </Button>
           <h2 className="truncate text-base font-semibold">{titleFor(loc.pathname)}</h2>
           <div className="ml-auto flex items-center gap-2">
+            {user.isDemo && (
+              <>
+                <div className="hidden text-right lg:block">
+                  <Badge tone="warning">DEMO MODE</Badge>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">You are exploring a demonstration environment.</p>
+                </div>
+                <Button variant="outline" size="sm" className="border-warning/40" onClick={() => setRoleSwitcherOpen(true)}>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Switch Demo Role</span>
+                  <span className="sm:hidden">Switch</span>
+                </Button>
+              </>
+            )}
             <div
               className="hidden items-center gap-1.5 rounded-md border bg-surface px-2.5 py-1.5 text-xs text-muted-foreground sm:flex"
               title="Current store"
@@ -225,6 +275,29 @@ export function AppShell() {
           </div>
         </main>
       </div>
+      {user.isDemo && (
+        <Dialog open={roleSwitcherOpen} onOpenChange={(open) => { setRoleSwitcherOpen(open); if (!open) setSwitchError(null); }}>
+          <DialogContent title="Switch Demo Role" description="Start a new verified demo session with the selected role." size="sm">
+            {switchError && <div role="alert" className="mb-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{switchError}</div>}
+            <div className="space-y-2">
+              {(['OWNER', 'MANAGER', 'CASHIER'] as Role[]).map((role) => (
+                <Button
+                  key={role}
+                  variant={role === user.role ? 'secondary' : 'outline'}
+                  className="w-full justify-between"
+                  disabled={role === user.role || switchingRole !== null}
+                  loading={switchingRole === role}
+                  onClick={() => void switchDemoRole(role)}
+                >
+                  <span>{role.charAt(0) + role.slice(1).toLowerCase()}</span>
+                  <span className="text-xs text-muted-foreground">{role === user.role ? 'Current role' : 'Enter demo'}</span>
+                </Button>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">Switching revokes your previous demo session and clears role-specific cached data.</p>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

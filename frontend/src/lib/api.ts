@@ -33,6 +33,7 @@ export async function refreshSession(): Promise<string | null> {
   refreshing ??= axios
     .post('/api/v1/auth/refresh', null, { withCredentials: true, headers: { 'X-Requested-With': 'pos-web' } })
     .then((r) => {
+      if (r.status === 204) return null;
       useAuth.getState().setSession(r.data.data.accessToken, r.data.data.user);
       return r.data.data.accessToken as string;
     })

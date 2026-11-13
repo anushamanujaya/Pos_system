@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { env } from '../../config/env';
-import { permissionsFor } from '../../config/permissions';
+import { assertDemoDatabase, DEMO_ACCOUNTS, isAllowedDemoAccount } from '../../config/demo';
+import { permissionsFor, type Role } from '../../config/permissions';
 import { RefreshSession, User } from '../../database/models';
 import { signAccessToken } from '../../middleware/auth';
 import { audit, type Actor } from '../../services/common';
@@ -23,7 +24,7 @@ export function publicUser(u: {
   role: 'OWNER' | 'MANAGER' | 'CASHIER';
   mustChangePassword?: boolean | null;
   phone?: string | null;
-}) {
+}, isDemo = false) {
   return {
     id: String(u._id),
     name: u.name,
@@ -32,10 +33,16 @@ export function publicUser(u: {
     phone: u.phone ?? undefined,
     mustChangePassword: !!u.mustChangePassword,
     permissions: permissionsFor(u.role),
+    isDemo,
   };
 }
 
-async function issueSession(userId: string, family: string, meta: { userAgent?: string; ip?: string }) {
+async function issueSession(
+  userId: string,
+  family: string,
+  meta: { userAgent?: string; ip?: string },
+  isDemo = false,
+) {
   const token = crypto.randomBytes(48).toString('base64url');
   await RefreshSession.create({
     user: userId,
@@ -44,6 +51,7 @@ async function issueSession(userId: string, family: string, meta: { userAgent?: 
     expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86400_000),
     userAgent: meta.userAgent?.slice(0, 200),
     ip: meta.ip,
+    isDemo,
   });
   return token;
 }
@@ -92,6 +100,50 @@ export async function login(email: string, password: string, meta: { userAgent?:
   return { accessToken, refreshToken, user: publicUser(user) };
 }
 
+/** Passwordless login for the three fixed accounts in a verified, isolated demo database only. */
+export async function demoLogin(
+  role: Role,
+  previousToken: string | undefined,
+  meta: { userAgent?: string; ip?: string },
+) {
+  await assertDemoDatabase();
+  const user = await User.findOne({
+    email: DEMO_ACCOUNTS[role],
+    role,
+    isDemoAccount: true,
+    active: true,
+  });
+  if (!user || !isAllowedDemoAccount(user)) throw unauthorized('Demo account is unavailable');
+
+  // Switching roles retires the previous demo token family. Normal sessions are never revoked here.
+  if (previousToken) {
+    const previous = await RefreshSession.findOne({ tokenHash: sha256(previousToken), isDemo: true });
+    if (previous)
+      await RefreshSession.updateMany(
+        { family: previous.family, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+      );
+  }
+
+  user.lastLoginAt = new Date();
+  await user.save();
+  const refreshToken = await issueSession(String(user._id), crypto.randomUUID(), meta, true);
+  const accessToken = signAccessToken({
+    sub: String(user._id),
+    role: user.role,
+    tv: user.tokenVersion,
+    demo: true,
+  });
+  await audit(
+    { id: String(user._id), name: user.name, ip: meta.ip },
+    'auth.demo_login',
+    'User',
+    user._id,
+    `Demo session started as ${role}`,
+  );
+  return { accessToken, refreshToken, user: publicUser(user, true) };
+}
+
 /** Rotating refresh tokens: each use revokes the presented token and issues a new one in the same family. A reused (already rotated) token revokes the whole family. */
 export async function refresh(token: string | undefined, meta: { userAgent?: string; ip?: string }) {
   if (!token) throw unauthorized();
@@ -107,6 +159,10 @@ export async function refresh(token: string | undefined, meta: { userAgent?: str
   if (session.expiresAt < new Date()) throw unauthorized('Session expired');
   const user = await User.findById(session.user);
   if (!user || !user.active) throw unauthorized('Account is not active');
+  if (session.isDemo) {
+    await assertDemoDatabase();
+    if (!isAllowedDemoAccount(user)) throw unauthorized('Demo session is no longer valid');
+  }
 
   // Atomic claim: only one concurrent refresh can rotate this token.
   const claimed = await RefreshSession.findOneAndUpdate(
@@ -114,12 +170,17 @@ export async function refresh(token: string | undefined, meta: { userAgent?: str
     { $set: { revokedAt: new Date() } },
   );
   if (!claimed) throw unauthorized('Session revoked');
-  const next = await issueSession(String(user._id), session.family, meta);
+  const next = await issueSession(String(user._id), session.family, meta, !!session.isDemo);
   await RefreshSession.updateOne({ _id: session._id }, { $set: { replacedBy: sha256(next) } });
   return {
-    accessToken: signAccessToken({ sub: String(user._id), role: user.role, tv: user.tokenVersion }),
+    accessToken: signAccessToken({
+      sub: String(user._id),
+      role: user.role,
+      tv: user.tokenVersion,
+      ...(session.isDemo ? { demo: true } : {}),
+    }),
     refreshToken: next,
-    user: publicUser(user),
+    user: publicUser(user, !!session.isDemo),
   };
 }
 

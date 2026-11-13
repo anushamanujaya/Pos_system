@@ -9,6 +9,8 @@ export interface SessionUser {
   phone?: string;
   mustChangePassword: boolean;
   permissions: string[];
+  /** True only when verified by a demo JWT/refresh-session pair from the backend. */
+  isDemo: boolean;
 }
 
 interface AuthState {

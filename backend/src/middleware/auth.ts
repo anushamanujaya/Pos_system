@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
+import { assertDemoDatabase, isAllowedDemoAccount } from '../config/demo';
 import { can, type Permission, type Role } from '../config/permissions';
 import { User } from '../database/models';
 import { forbidden, unauthorized } from '../utils/errors';
@@ -12,6 +13,7 @@ export interface AuthUser {
   email: string;
   role: Role;
   ip?: string;
+  isDemo?: boolean;
 }
 declare module 'express-serve-static-core' {
   interface Request {
@@ -23,6 +25,7 @@ export interface AccessClaims {
   sub: string;
   role: Role;
   tv: number;
+  demo?: boolean;
 }
 
 export const signAccessToken = (c: AccessClaims) =>
@@ -41,10 +44,23 @@ export const authenticate = wrap(async (req: Request, _res: Response, next: Next
   } catch {
     throw unauthorized('Session expired');
   }
-  const user = await User.findById(claims.sub).select('name email role active tokenVersion').lean();
+  const user = await User.findById(claims.sub)
+    .select('name email role active tokenVersion isDemoAccount')
+    .lean();
   if (!user || !user.active || user.tokenVersion !== claims.tv)
     throw unauthorized('Session is no longer valid');
-  req.user = { id: String(user._id), name: user.name, email: user.email, role: user.role, ip: req.ip };
+  if (claims.demo) {
+    await assertDemoDatabase();
+    if (!isAllowedDemoAccount(user)) throw unauthorized('Demo session is no longer valid');
+  }
+  req.user = {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    ip: req.ip,
+    isDemo: !!claims.demo,
+  };
   next();
 });
 
