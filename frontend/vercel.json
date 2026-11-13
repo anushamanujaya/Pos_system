@@ -4,11 +4,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://pos-system-azynix.vercel.app/api/:path*"
+      "destination": "https://pos-system-mu-wine.vercel.app/api/:path*"
     },
     {
       "source": "/uploads/:path*",
-      "destination": "https://pos-system-azynix.vercel.app/uploads/:path*"
+      "destination": "https://pos-system-mu-wine.vercel.app/uploads/:path*"
     },
     {
       "source": "/(.*)",

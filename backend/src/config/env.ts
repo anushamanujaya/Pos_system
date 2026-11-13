@@ -9,6 +9,8 @@ const schema = z.object({
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(7),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  /** Exact canonical frontend origin; merged into CORS_ORIGINS (no wildcard matching). */
+  FRONTEND_ORIGIN: z.string().url().optional(),
   /** Refresh cookie `Secure` flag. Defaults to on in production; set false ONLY for plain-HTTP local demos. */
   COOKIE_SECURE: z.enum(['true', 'false']).optional(),
   LOG_LEVEL: z.string().default('info'),
@@ -20,6 +22,7 @@ const schema = z.object({
   DEMO_DATABASE_NAME: z.string().trim().min(1).optional(),
   DEMO_DATABASE_ID: z.string().min(16).optional(),
   DEMO_ACCOUNT_PASSWORD: z.string().min(16).optional(),
+  VERCEL: z.string().optional(),
 });
 
 const parsed = schema.safeParse(
@@ -32,15 +35,21 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+const configuredOrigins = [
+  ...parsed.data.CORS_ORIGINS.split(','),
+  ...(parsed.data.FRONTEND_ORIGIN ? [parsed.data.FRONTEND_ORIGIN] : []),
+]
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
 export const env = {
   ...parsed.data,
-  corsOrigins: parsed.data.CORS_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean),
+  corsOrigins: [...new Set(configuredOrigins)],
   isProd: parsed.data.NODE_ENV === 'production',
   cookieSecure: parsed.data.COOKIE_SECURE
     ? parsed.data.COOKIE_SECURE === 'true'
     : parsed.data.NODE_ENV === 'production',
   isTest: parsed.data.NODE_ENV === 'test',
   demoMode: parsed.data.DEMO_MODE === 'true',
+  isVercel: parsed.data.VERCEL === '1',
 };

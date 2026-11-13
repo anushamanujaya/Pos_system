@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import mongoose from 'mongoose';
 import { env } from './config/env';
 import { assertDemoDatabase } from './config/demo';
-import { connectDb } from './database/connect';
+import { ensureDatabaseConnection } from './database/connect';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { apiLimiter } from './middleware/rateLimit';
 import { authRouter } from './modules/auth/auth.routes';
@@ -27,12 +27,14 @@ import {
 } from './modules/settings/settings.routes';
 import { usersRouter } from './modules/users/users.routes';
 import { logger } from './utils/logger';
+import { AppError } from './utils/errors';
+import { wrap } from './utils/http';
 
 type AppOptions = {
-  beforeApi?: RequestHandler;
+  databaseGate?: RequestHandler;
 };
 
-export function createApp({ beforeApi }: AppOptions = {}) {
+export function createApp({ databaseGate }: AppOptions = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', env.isProd ? 1 : false);
@@ -43,8 +45,9 @@ export function createApp({ beforeApi }: AppOptions = {}) {
       credentials: true,
       origin: (origin, cb) => {
         // same-origin / curl / server-to-server requests have no Origin header
-        if (!origin || env.corsOrigins.includes(origin)) return cb(null, true);
-        cb(new Error('Origin not allowed by CORS'));
+        const normalizedOrigin = origin?.replace(/\/$/, '');
+        if (!normalizedOrigin || env.corsOrigins.includes(normalizedOrigin)) return cb(null, true);
+        cb(new AppError(403, 'CORS_ORIGIN_DENIED', 'Origin not allowed by CORS'));
       },
     }),
   );
@@ -69,20 +72,30 @@ export function createApp({ beforeApi }: AppOptions = {}) {
     });
   }
 
-  app.use(
-    '/uploads',
-    express.static(uploadDir, {
-      maxAge: '7d',
-      setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
-    }),
-  );
+  if (!env.isVercel)
+    app.use(
+      '/uploads',
+      express.static(uploadDir, {
+        maxAge: '7d',
+        setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+      }),
+    );
 
-  app.get('/api/health', (_req, res) => {
-    const dbUp = mongoose.connection.readyState === 1;
-    res.status(dbUp ? 200 : 503).json({ status: dbUp ? 'ok' : 'degraded', db: dbUp ? 'up' : 'down' });
+  const healthHandler = wrap(async (_req, res) => {
+    if (mongoose.connection.readyState !== 1 || !mongoose.connection.db)
+      throw new AppError(503, 'DATABASE_UNAVAILABLE', 'Database connection is unavailable');
+    try {
+      await mongoose.connection.db.command({ ping: 1 });
+    } catch (error) {
+      logger.error({ err: error }, 'Database health ping failed');
+      throw new AppError(503, 'DATABASE_UNAVAILABLE', 'Database connection is unavailable');
+    }
+    res.status(200).json({ status: 'ok', db: 'up' });
   });
+  if (databaseGate) app.get('/api/health', databaseGate, healthHandler);
+  else app.get('/api/health', healthHandler);
 
-  if (beforeApi) app.use('/api/v1', beforeApi);
+  if (databaseGate) app.use('/api/v1', databaseGate);
 
   const v1 = express.Router();
   v1.use(apiLimiter);
@@ -111,29 +124,21 @@ export function createApp({ beforeApi }: AppOptions = {}) {
   return app;
 }
 
-let databaseConnection: Promise<void> | undefined;
-
-const ensureDatabaseConnection: RequestHandler = (_req, _res, next) => {
-  if (mongoose.connection.readyState === 1) {
-    next();
-    return;
-  }
-
-  databaseConnection ??= connectDb().catch((error: unknown) => {
-    databaseConnection = undefined;
-    throw error;
-  });
-  void databaseConnection
+const databaseGate: RequestHandler = (_req, _res, next) => {
+  void ensureDatabaseConnection()
     .then(async () => {
       if (env.demoMode) await assertDemoDatabase();
       next();
     })
-    .catch(next);
+    .catch((error: unknown) => {
+      logger.error({ err: error }, 'Database initialization failed');
+      next(new AppError(503, 'DATABASE_UNAVAILABLE', 'Database connection is unavailable'));
+    });
 };
 
 // Vercel detects this recognized entrypoint and requires the Express application
 // itself as the module's default export. The middleware connects once per warm
 // instance, while server.ts retains its explicit connection/startup lifecycle.
-const app = createApp({ beforeApi: ensureDatabaseConnection });
+const app = createApp({ databaseGate });
 
 export default app;
