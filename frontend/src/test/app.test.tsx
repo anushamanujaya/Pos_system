@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,7 +20,12 @@ vi.mock('@/lib/api', async (orig) => {
 
 const wrap = (ui: React.ReactNode, path = '/') => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>
+    <MemoryRouter
+      initialEntries={[path]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      {ui}
+    </MemoryRouter>
   </QueryClientProvider>
 );
 const user = (permissions: string[], extra = {}) => ({
@@ -30,6 +35,7 @@ const user = (permissions: string[], extra = {}) => ({
   role: 'CASHIER' as const,
   mustChangePassword: false,
   permissions,
+  isDemo: false,
   ...extra,
 });
 
@@ -72,6 +78,30 @@ describe('login form', () => {
     await userEvent.type(screen.getByLabelText('Password'), 'wrongpass');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password');
+  });
+
+  it('enters a backend-issued demo session without credentials', async () => {
+    post.mockResolvedValue({
+      data: { accessToken: 'demo-token', user: user(['reports.read'], { role: 'OWNER', isDemo: true }) },
+    });
+    render(
+      wrap(
+        <Routes>
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/dashboard" element={<p>Demo dashboard</p>} />
+        </Routes>,
+      ),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /explore demo/i }));
+    const ownerCard = screen.getByRole('heading', { name: /owner demo/i }).closest('article')!;
+    await userEvent.click(within(ownerCard).getByRole('button', { name: /enter demo/i }));
+    expect(post).toHaveBeenCalledWith(
+      'post',
+      '/auth/demo',
+      { role: 'OWNER' },
+      { 'X-Requested-With': 'pos-web' },
+    );
+    await waitFor(() => expect(useAuth.getState().user?.isDemo).toBe(true));
   });
 });
 

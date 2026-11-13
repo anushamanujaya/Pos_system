@@ -5,6 +5,7 @@ import type { RequestHandler } from 'express';
 import helmet from 'helmet';
 import mongoose from 'mongoose';
 import { env } from './config/env';
+import { assertDemoDatabase } from './config/demo';
 import { connectDb } from './database/connect';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { apiLimiter } from './middleware/rateLimit';
@@ -122,7 +123,12 @@ const ensureDatabaseConnection: RequestHandler = (_req, _res, next) => {
     databaseConnection = undefined;
     throw error;
   });
-  void databaseConnection.then(() => next(), next);
+  void databaseConnection
+    .then(async () => {
+      if (env.demoMode) await assertDemoDatabase();
+      next();
+    })
+    .catch(next);
 };
 
 // Vercel detects this recognized entrypoint and requires the Express application

@@ -66,8 +66,8 @@ a local `mongod` needs `--replSet rs0` + `rs.initiate()`). No database script is
 Without a database: `cd backend && npm run dev:db` (or `docker compose up -d mongo`).
 For an empty production-style start use `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `backend/.env` and `npm run init:admin` instead of the demo seed.
 
-Demo logins (after `seed:demo`, password `Demo@12345`): `owner@demo.local`, `manager@demo.local`, `cashier@demo.local`, `cashier2@demo.local`.
-The demo password is public; never seed demo data in production (the seed refuses when `NODE_ENV=production`).
+Development logins created by `npm run seed` use password `Demo@12345`: `owner@demo.local`, `manager@demo.local`,
+`cashier@demo.local`, `cashier2@demo.local`. The public one-click demo described below does not send or expose a password.
 
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
@@ -83,6 +83,41 @@ See [.env.example](.env.example). `JWT_ACCESS_SECRET` is required. Secrets stay 
 | `CORS_ORIGINS` | Comma-separated allowed browser origins |
 | `COOKIE_SECURE` | Refresh-cookie `Secure` flag (default on in production; `false` only for plain-HTTP demos) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Used only by `npm run init:admin` |
+| `DEMO_MODE` | Must be exactly `true` to expose one-click demo access; unset/`false` disables it |
+| `DEMO_DATABASE_NAME` | Exact isolated demo database name; must match the database in `MONGODB_URI` |
+| `DEMO_DATABASE_ID` | Random 16+ character identity used to verify the seeded database marker |
+| `DEMO_ACCOUNT_PASSWORD` | Random 16+ character server-only password used while seeding demo accounts; never sent to the browser |
+
+## Secure one-click demo deployment
+
+Public demo access is designed for a **separate deployment and separate database only**. It remains disabled in a normal
+customer deployment even when the three development accounts happen to exist. `NODE_ENV=production` is supported: the
+security boundary is the explicit demo configuration and isolated database identity, not the Node environment name.
+
+1. Create a dedicated MongoDB database (for example `supermarket_pos_demo`) and a database user whose privileges are
+   limited to that database. Never reuse a customer/production MongoDB URI, JWT secret, or database backup.
+2. Copy [backend/.env.demo.example](backend/.env.demo.example) to a secure, untracked environment configuration and set
+   fresh values. If the URI includes a database path it must exactly equal `DEMO_DATABASE_NAME`; if Atlas omits the path,
+   the backend explicitly selects `DEMO_DATABASE_NAME` through the MongoDB driver. Keep `DEMO_DATABASE_ID`,
+   `DEMO_ACCOUNT_PASSWORD`, and `JWT_ACCESS_SECRET` in the backend secret store only.
+3. From `backend/`, run `npm run seed:demo` once. The guarded seed is allowed in production only when all demo gates pass.
+   It writes a hashed database-identity marker, the three allowlisted demo accounts, products, categories, inventory,
+   customers, suppliers, a purchase order and goods receipt, cash-register data, and checkout-backed sales used by reports.
+   Re-running it uses upserts and does not add another batch of generated sales.
+4. Deploy this backend and frontend as the dedicated demo environment. Use an exact demo frontend origin in
+   `CORS_ORIGINS`; keep HTTPS and `COOKIE_SECURE=true`. The browser calls only `POST /api/v1/auth/demo` with one of
+   `OWNER`, `MANAGER`, or `CASHIER`. Emails, user IDs, passwords, secrets, and credentials are never accepted by that route.
+5. Verify the customer production deployment has `DEMO_MODE=false` or unset and does not define the demo variables. This
+   makes the endpoint return 403. Removing `DEMO_MODE` is the immediate way to disable demo access.
+
+Every demo login uses the normal access-token and rotating httpOnly refresh-session system. Switching role asks the backend
+for another allowlisted account, revokes the previous demo session family, issues a new legitimate session, clears frontend
+query/POS caches, and rebuilds navigation from the new server-provided permissions. The switcher is rendered only when the
+backend marks the current session as a verified demo session. All existing route permission middleware remains authoritative.
+
+Before making a demo public, also apply infrastructure-level rate limits, monitor abuse, schedule database resets from a
+trusted operator job if desired, and ensure the isolated database contains only synthetic data. Do not configure real payment
+credentials, customer integrations, customer records, or production API keys in the demo deployment.
 
 ## Scripts
 

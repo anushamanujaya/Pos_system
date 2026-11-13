@@ -1,9 +1,10 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { env } from '../../config/env';
+import { ROLES } from '../../config/permissions';
 import { User } from '../../database/models';
 import { authenticate } from '../../middleware/auth';
-import { loginLimiter } from '../../middleware/rateLimit';
+import { demoLoginLimiter, loginLimiter } from '../../middleware/rateLimit';
 import { body } from '../../middleware/validate';
 import { badRequest } from '../../utils/errors';
 import { ok, wrap } from '../../utils/http';
@@ -40,10 +41,31 @@ authRouter.post(
   }),
 );
 
+const demoSchema = z.object({ role: z.enum(ROLES) }).strict();
+authRouter.post(
+  '/demo',
+  demoLoginLimiter,
+  wrap(async (req, res) => {
+    csrfGuard(req);
+    const { role } = body(demoSchema, req);
+    const r = await svc.demoLogin(role, req.cookies?.[COOKIE], {
+      userAgent: req.headers['user-agent'],
+      ip: req.ip,
+    });
+    setCookie(res, r.refreshToken);
+    ok(res, { accessToken: r.accessToken, user: r.user });
+  }),
+);
+
 authRouter.post(
   '/refresh',
   wrap(async (req, res) => {
     csrfGuard(req);
+    if (!req.cookies?.[COOKIE]) {
+      clearCookie(res);
+      res.status(204).end();
+      return;
+    }
     try {
       const r = await svc.refresh(req.cookies?.[COOKIE], {
         userAgent: req.headers['user-agent'],
@@ -73,7 +95,7 @@ authRouter.get(
   authenticate,
   wrap(async (req, res) => {
     const u = await User.findById(req.user!.id);
-    ok(res, svc.publicUser(u!));
+    ok(res, svc.publicUser(u!, !!req.user!.isDemo));
   }),
 );
 
@@ -99,6 +121,6 @@ authRouter.patch(
   wrap(async (req, res) => {
     const data = body(profileSchema, req);
     const u = await User.findByIdAndUpdate(req.user!.id, { $set: data }, { new: true });
-    ok(res, svc.publicUser(u!));
+    ok(res, svc.publicUser(u!, !!req.user!.isDemo));
   }),
 );

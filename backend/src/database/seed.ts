@@ -1,10 +1,11 @@
 /**
  * Development seed. `npm run seed` loads catalogue + stock + people; `npm run seed:demo` also generates
  * a week of real, persisted demo transactions through the same service code the POS uses
- * (so dashboards are computed from genuine records). Refuses to run in production.
+ * (so dashboards are computed from genuine records). Production seeding is permitted only for a verified demo target.
  */
 import mongoose from 'mongoose';
 import { env } from '../config/env';
+import { assertDemoConfiguration, demoIdentityHash } from '../config/demo';
 import { checkout, priceRequest } from '../modules/sales/sales.service';
 import { hashPassword } from '../modules/auth/auth.service';
 import { connectDb, disconnectDb } from './connect';
@@ -14,8 +15,10 @@ import {
   CashShift,
   Category,
   Customer,
+  DemoEnvironment,
   GoodsReceipt,
   Product,
+  PurchaseOrder,
   Supplier,
   Unit,
   User,
@@ -28,7 +31,7 @@ import { getSettings, nextSeq, withTx } from '../services/common';
 import { addStock, checkStockAlerts } from '../services/stock';
 import { toMilli } from '../utils/money';
 
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo@12345';
+const DEMO_PASSWORD = env.DEMO_ACCOUNT_PASSWORD ?? 'Demo@12345';
 
 // name, sku, barcode, category, brand, unit, cost, price, taxCode, reorder, expiryDays (undefined = no expiry), stock
 type Row = [
@@ -772,6 +775,27 @@ async function seedCatalogue() {
     if (!(await Customer.exists({ phone: c.phone })))
       await Customer.create({ ...c, code: `C${String(await nextSeq('customer')).padStart(5, '0')}` });
   }
+  if (!(await PurchaseOrder.exists({ number: 'PO-DEMO-001' }))) {
+    const sampleProducts = await Product.find({ status: 'ACTIVE' }).limit(4).lean();
+    const items = sampleProducts.map((product) => ({
+      product: product._id,
+      orderedMilli: 10_000,
+      receivedMilli: 10_000,
+      costCents: product.costCents,
+    }));
+    if (items.length)
+      await PurchaseOrder.create({
+        number: 'PO-DEMO-001',
+        supplier: sup[0]._id,
+        status: 'RECEIVED',
+        items,
+        totalCents: items.reduce((total, item) => total + (item.orderedMilli / 1000) * item.costCents, 0),
+        supplierInvoiceRef: 'DEMO-INV-001',
+        notes: 'Sample completed purchase order',
+        orderedAt: new Date(Date.now() - 3 * 86400_000),
+        createdBy: actor._id,
+      });
+  }
   // One near-expiry batch for the dashboard/alerts to show something real.
   const milk = await Product.findOne({ sku: 'DAI-MILK-1L' });
   if (milk) {
@@ -797,15 +821,25 @@ async function seedPeople() {
     { name: 'Dilini Cashier', email: 'cashier2@demo.local', role: 'CASHIER' as const },
   ];
   const hash = await hashPassword(DEMO_PASSWORD);
-  for (const p of people)
+  for (const [index, p] of people.entries())
     await User.updateOne(
       { email: p.email },
-      { $setOnInsert: { ...p, passwordHash: hash } },
+      {
+        $set: {
+          name: p.name,
+          role: p.role,
+          isDemoAccount: index < 3,
+          mustChangePassword: false,
+          active: true,
+        },
+        $setOnInsert: { passwordHash: hash },
+      },
       { upsert: true },
     );
 }
 
 async function seedTransactions() {
+  if (await Sale.exists({ idempotencyKey: /^seed-/ })) return 0;
   const cashier = (await User.findOne({ email: 'cashier@demo.local' }))!;
   const user = { id: String(cashier._id), name: cashier.name, email: cashier.email, role: cashier.role };
   const reg = (await CashRegister.findOne())!;
@@ -865,17 +899,29 @@ async function seedTransactions() {
 }
 
 async function main() {
-  if (env.isProd) {
-    console.error('Refusing to seed demo data when NODE_ENV=production.');
+  const demo = process.argv.includes('--demo');
+  if (demo) {
+    assertDemoConfiguration();
+    if (!env.DEMO_ACCOUNT_PASSWORD) throw new Error('DEMO_ACCOUNT_PASSWORD is required for demo seeding');
+  } else if (env.isProd) {
+    console.error('Refusing to run the development seed when NODE_ENV=production.');
     process.exit(1);
   }
-  const demo = process.argv.includes('--demo');
   await connectDb();
+  if (demo) {
+    if (mongoose.connection.name !== env.DEMO_DATABASE_NAME)
+      throw new Error('Connected to an unexpected database');
+    await DemoEnvironment.findByIdAndUpdate(
+      'demo-environment',
+      { $set: { identityHash: demoIdentityHash(env.DEMO_DATABASE_ID!) } },
+      { upsert: true },
+    );
+  }
   await ensureBase();
   await seedPeople();
   const n = await seedCatalogue();
    
-  console.log(`Seeded ${n} products, suppliers, customers and demo users (password: ${DEMO_PASSWORD}).`);
+  console.log(`Seeded ${n} products, suppliers, customers and demo users.`);
   if (demo) {
      
     console.log(`Generated ${await seedTransactions()} demo sales through the real checkout service.`);

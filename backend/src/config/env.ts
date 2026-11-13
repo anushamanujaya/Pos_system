@@ -16,6 +16,10 @@ const schema = z.object({
   ADMIN_EMAIL: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   ADMIN_NAME: z.string().default('Store Owner'),
+  DEMO_MODE: z.enum(['true', 'false']).default('false'),
+  DEMO_DATABASE_NAME: z.string().trim().min(1).optional(),
+  DEMO_DATABASE_ID: z.string().min(16).optional(),
+  DEMO_ACCOUNT_PASSWORD: z.string().min(16).optional(),
 });
 
 const parsed = schema.safeParse(
@@ -38,4 +42,5 @@ export const env = {
     ? parsed.data.COOKIE_SECURE === 'true'
     : parsed.data.NODE_ENV === 'production',
   isTest: parsed.data.NODE_ENV === 'test',
+  demoMode: parsed.data.DEMO_MODE === 'true',
 };
