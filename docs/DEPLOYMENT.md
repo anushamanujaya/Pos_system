@@ -36,6 +36,36 @@ Use the `mongodb+srv://…` URI (Atlas clusters are replica sets). Create a leas
 - [ ] Tax rates configured by the owner/accountant
 - [ ] Automated MongoDB backups + restore drill; uploads backed up
 - [ ] Log shipping / alerts (pino JSON on stdout), `/api/health` monitored
+
+## Vercel split deployment
+
+Deploy `frontend/` and `backend/` as separate Vercel projects. The frontend rewrite in
+`frontend/vercel.json` proxies `/api/*` to the backend so refresh cookies remain first-party.
+
+Backend environment requirements:
+
+```text
+NODE_ENV=production
+MONGODB_URI=<dedicated MongoDB Atlas URI>
+JWT_ACCESS_SECRET=<strong backend-only secret>
+FRONTEND_ORIGIN=https://<canonical-frontend-domain>
+CORS_ORIGINS=https://<canonical-frontend-domain>,https://<exact-preview-domain-if-needed>
+COOKIE_SECURE=true
+```
+
+Origins are exact allowlist entries. Do not use `*` when credentials are enabled. Add each preview
+domain explicitly or use a stable custom preview domain. After changing Vercel environment variables,
+redeploy the backend because existing deployments retain their old environment snapshot.
+
+`GET /api/health` establishes/reuses the cached MongoDB connection and performs a real `ping`; it
+returns 503 if initialization or the ping fails. `GET /` on the backend is intentionally 404 because
+the backend is API-only. The frontend project owns `/` and rewrites SPA routes to `index.html`.
+
+Vercel's function filesystem is not permanent product-image storage. Local disk uploads remain
+available for Docker/traditional Node hosting, but Vercel returns `UPLOAD_STORAGE_UNAVAILABLE` for
+image/logo mutations. Configure durable object storage (for example an S3-compatible service) and
+store durable public/object URLs before enabling uploads on Vercel. `/tmp` must not be used for
+permanent product images.
 - [ ] `npm audit` reviewed; images rebuilt regularly
 - [ ] Time sync on the host (reports use Asia/Colombo day boundaries)
 

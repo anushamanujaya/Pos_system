@@ -81,6 +81,7 @@ See [.env.example](.env.example). `JWT_ACCESS_SECRET` is required. Secrets stay 
 | `JWT_ACCESS_SECRET`, `ACCESS_TOKEN_TTL` | Access-token signing / lifetime (default 15m) |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh session lifetime (default 7) |
 | `CORS_ORIGINS` | Comma-separated allowed browser origins |
+| `FRONTEND_ORIGIN` | Exact canonical frontend origin, also added to the CORS allowlist |
 | `COOKIE_SECURE` | Refresh-cookie `Secure` flag (default on in production; `false` only for plain-HTTP demos) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Used only by `npm run init:admin` |
 | `DEMO_MODE` | Must be exactly `true` to expose one-click demo access; unset/`false` disables it |
@@ -105,7 +106,8 @@ security boundary is the explicit demo configuration and isolated database ident
    customers, suppliers, a purchase order and goods receipt, cash-register data, and checkout-backed sales used by reports.
    Re-running it uses upserts and does not add another batch of generated sales.
 4. Deploy this backend and frontend as the dedicated demo environment. Use an exact demo frontend origin in
-   `CORS_ORIGINS`; keep HTTPS and `COOKIE_SECURE=true`. The browser calls only `POST /api/v1/auth/demo` with one of
+   `FRONTEND_ORIGIN` (and list any exact preview origins in `CORS_ORIGINS`); keep HTTPS and `COOKIE_SECURE=true`.
+   Wildcard credentialed origins are intentionally unsupported. The browser calls only `POST /api/v1/auth/demo` with one of
    `OWNER`, `MANAGER`, or `CASHIER`. Emails, user IDs, passwords, secrets, and credentials are never accepted by that route.
 5. Verify the customer production deployment has `DEMO_MODE=false` or unset and does not define the demo variables. This
    makes the endpoint return 403. Removing `DEMO_MODE` is the immediate way to disable demo access.

@@ -4,6 +4,8 @@ import { assertDemoConfiguration } from '../config/demo';
 import { logger } from '../utils/logger';
 import * as models from './models';
 
+let defaultConnection: Promise<void> | undefined;
+
 export async function connectDb(uri = env.MONGODB_URI) {
   if (env.demoMode && uri === env.MONGODB_URI) assertDemoConfiguration();
   mongoose.set('strictQuery', true);
@@ -20,6 +22,26 @@ export async function connectDb(uri = env.MONGODB_URI) {
   await ensureIndexes();
 }
 
+/**
+ * Reuses one in-flight/established default connection per warm serverless instance.
+ * A failed attempt is removed so a later invocation can retry instead of caching rejection forever.
+ */
+export function ensureDatabaseConnection() {
+  if (mongoose.connection.readyState === 1) return Promise.resolve();
+  if (mongoose.connection.readyState === 2)
+    return mongoose.connection.asPromise().then(() => undefined);
+  defaultConnection ??= connectDb().then(
+    () => {
+      defaultConnection = undefined;
+    },
+    (error: unknown) => {
+      defaultConnection = undefined;
+      throw error;
+    },
+  );
+  return defaultConnection;
+}
+
 /** Builds indexes (including unique/partial ones that carry business invariants) before serving traffic. */
 export async function ensureIndexes() {
   void models; // ensure every model is registered before syncing
@@ -29,5 +51,6 @@ export async function ensureIndexes() {
 }
 
 export async function disconnectDb() {
+  defaultConnection = undefined;
   await mongoose.disconnect();
 }

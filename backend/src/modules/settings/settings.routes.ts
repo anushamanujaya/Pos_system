@@ -7,7 +7,7 @@ import { audit, getSettings } from '../../services/common';
 import { badRequest, notFound } from '../../utils/errors';
 import { ok, wrap } from '../../utils/http';
 import { pageMeta, pageQuery } from '../../utils/pagination';
-import { imageUpload } from '../products/products.routes';
+import { imageUpload, requirePersistentUploadStorage } from '../products/products.routes';
 
 // ---------------- Settings ----------------
 export const settingsRouter = Router();
@@ -126,6 +126,7 @@ settingsRouter.put(
 settingsRouter.post(
   '/logo',
   requirePermission('settings.manage'),
+  requirePersistentUploadStorage,
   imageUpload.single('image'),
   wrap(async (req, res) => {
     if (!req.file) throw badRequest('Upload a JPEG, PNG or WebP image up to 2MB');

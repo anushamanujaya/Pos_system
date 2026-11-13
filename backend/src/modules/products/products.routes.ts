@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -10,7 +10,7 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { body, idParam, query } from '../../middleware/validate';
 import { audit } from '../../services/common';
 import { toCsv } from '../../utils/csv';
-import { badRequest, notFound } from '../../utils/errors';
+import { AppError, badRequest, notFound } from '../../utils/errors';
 import { ok, wrap } from '../../utils/http';
 import * as svc from './products.service';
 
@@ -18,15 +18,28 @@ export const productsRouter = Router();
 productsRouter.use(authenticate);
 
 export const uploadDir = path.resolve(env.UPLOAD_DIR);
-fs.mkdirSync(uploadDir, { recursive: true });
+if (!env.isVercel) fs.mkdirSync(uploadDir, { recursive: true });
+export const requirePersistentUploadStorage: RequestHandler = (_req, _res, next) => {
+  if (env.isVercel)
+    return next(
+      new AppError(
+        503,
+        'UPLOAD_STORAGE_UNAVAILABLE',
+        'Image uploads require configured persistent object storage on this deployment',
+      ),
+    );
+  next();
+};
 const EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 export const imageUpload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    // random server-chosen name: the client filename is never used on disk
-    filename: (_req, file, cb) =>
-      cb(null, `${crypto.randomBytes(16).toString('hex')}${EXT[file.mimetype] ?? ''}`),
-  }),
+  storage: env.isVercel
+    ? multer.memoryStorage()
+    : multer.diskStorage({
+        destination: uploadDir,
+        // random server-chosen name: the client filename is never used on disk
+        filename: (_req, file, cb) =>
+          cb(null, `${crypto.randomBytes(16).toString('hex')}${EXT[file.mimetype] ?? ''}`),
+      }),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, !!EXT[file.mimetype]),
 });
@@ -141,6 +154,7 @@ productsRouter.delete(
 productsRouter.post(
   '/:id/image',
   requirePermission('products.update'),
+  requirePersistentUploadStorage,
   imageUpload.single('image'),
   wrap(async (req, res) => {
     if (!req.file) throw badRequest('Upload a JPEG, PNG or WebP image up to 2MB');
